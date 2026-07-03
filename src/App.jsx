@@ -132,12 +132,45 @@ const PROACTIVE = [
 
 const J = (type, emoji, label, detail, time, extra = {}) => ({ id: Math.random().toString(36).slice(2), type, emoji, label, detail, time, ...extra });
 
+const dkey = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+const keyOf = (date) => dkey(date.getFullYear(), date.getMonth(), date.getDate());
+
+/* the app's sense of "today": device clock with a 3am boundary,
+   so a 1am snack still belongs to tonight, not tomorrow */
+const effectiveDate = () => { const d = new Date(); d.setHours(d.getHours() - 3); return d; };
+const TODAY_KEY = keyOf(effectiveDate());
+const shiftKey = (k, days) => { const d = new Date(k + "T12:00:00"); d.setDate(d.getDate() + days); return keyOf(d); };
+const nextKey = (k) => shiftKey(k, 1);
+
+/* safe localStorage (works deployed; harmless if unavailable) */
+const loadLS = (k, def) => { try { const v = localStorage.getItem(k); return v ?? def; } catch { return def; } };
+const saveLS = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+/* calendar months are generated from real dates */
+const buildMonths = () => {
+  const end = new Date(TODAY_KEY + "T12:00:00");
+  const start = new Date(end); start.setDate(start.getDate() - 11);
+  const out = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (cur <= end) {
+    out.push({
+      label: cur.toLocaleString("en-US", { month: "long", year: "numeric" }),
+      y: cur.getFullYear(), m: cur.getMonth(),
+      days: new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate(),
+    });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return out;
+};
+const MONTHS = buildMonths();
+
+const SEED_TODAY = TODAY_KEY;
 const SEED_JOURNAL = {
-  "2026-07-02": {
+  [SEED_TODAY]: {
     note: "In progress — I'm writing this as your day unfolds.",
     entries: [J("meal", "🍳", "Breakfast", "Eggs, turkey, sourdough, oat latte · ~510–680 kcal · 37 g protein", "8:40 am", { lo: 510, hi: 680, p: 37 })],
   },
-  "2026-07-01": {
+  [shiftKey(SEED_TODAY, -1)]: {
     note: "Great recovery day. You fueled before dance — evening cravings stayed quiet.",
     entries: [
       J("meal", "🍳", "Breakfast", "Usual · ~510–680 kcal · 37 g protein", "8:30 am"),
@@ -147,7 +180,7 @@ const SEED_JOURNAL = {
       J("meal", "🥗", "Dinner", "Salmon bowl · ~550–720 kcal · 42 g protein", "9:15 pm"),
     ],
   },
-  "2026-06-30": {
+  [shiftKey(SEED_TODAY, -2)]: {
     note: "Skipping the afternoon snack made dinner cravings louder — third time this month.",
     entries: [
       J("workout", "🏋️", "Back", "~45 min · ~150–220 kcal", "6:00 pm"),
@@ -155,14 +188,14 @@ const SEED_JOURNAL = {
       J("talk", "💬", "We talked", "Waist worry → water retention, salty lunch", "10:05 pm"),
     ],
   },
-  "2026-06-29": {
+  [shiftKey(SEED_TODAY, -3)]: {
     note: "Rest day. Protein dipped — it usually does on rest days.",
     entries: [
       J("meal", "🥤", "Lunch", "Fruit smoothie · ~200–300 kcal · 4 g protein", "1:00 pm"),
       J("photo", "🪞", "Body check", "You said your waist looked smaller", "9:00 pm"),
     ],
   },
-  "2026-06-28": {
+  [shiftKey(SEED_TODAY, -4)]: {
     note: "Sweet craving at 9pm — 4 of your last 5 chest days. We plan for it now.",
     entries: [
       J("workout", "🏋️", "Chest & shoulders", "~45 min · ~150–220 kcal", "5:00 pm"),
@@ -170,7 +203,7 @@ const SEED_JOURNAL = {
       J("meal", "🍫", "Sweet treat", "~150–280 kcal · 9pm craving — no drama", "9:10 pm"),
     ],
   },
-  "2026-06-27": {
+  [shiftKey(SEED_TODAY, -5)]: {
     note: "Double session handled well — early solid lunch kept energy high.",
     entries: [
       J("workout", "🍑", "Glutes & legs", "~50 min · ~180–260 kcal", "11:00 am"),
@@ -178,7 +211,7 @@ const SEED_JOURNAL = {
       J("meal", "🍗", "Post-swim wings", "~400–600 kcal · 34 g protein", "6:30 pm"),
     ],
   },
-  "2026-06-21": {
+  [shiftKey(SEED_TODAY, -11)]: {
     note: "Day 1. You told me your goal: lean, strong glutes, calm around food. Everything since builds on this.",
     entries: [J("talk", "💬", "First conversation", "Goals, stats, how you want to be coached", "9:00 pm")],
   },
@@ -493,26 +526,6 @@ function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto
 
 /* ---------------- JOURNAL: calendar + day timeline ---------------- */
 
-const MONTHS = [
-  { label: "June 2026", y: 2026, m: 5, days: 30 },
-  { label: "July 2026", y: 2026, m: 6, days: 31 },
-];
-const dkey = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-const TODAY_KEY = "2026-07-02"; // initial "today" in the demo timeline
-
-/* Demo clock: real product uses the device clock + a 3am day boundary.
-   The chip in the header lets you fast-forward through a full day. */
-const SIM_STAGES = [
-  { id: "m", label: "8:05 AM", hour: 8, advanceDay: false },
-  { id: "n", label: "12:40 PM", hour: 12.7, advanceDay: false },
-  { id: "a", label: "4:30 PM", hour: 16.5, advanceDay: false },
-  { id: "e", label: "9:15 PM", hour: 21.2, advanceDay: false },
-  { id: "m2", label: "8:10 AM", hour: 8.2, advanceDay: true },
-];
-const nextKey = (k) => {
-  const d = new Date(k + "T12:00:00"); d.setDate(d.getDate() + 1);
-  return dkey(d.getFullYear(), d.getMonth(), d.getDate());
-};
 
 function Calendar({ journal, selected, onSelect, monthIdx, setMonthIdx, todayKey }) {
   const M = MONTHS[monthIdx];
@@ -606,7 +619,7 @@ function EntryRow({ e, isLast, onAction }) {
 }
 
 function JournalScreen({ journal, onEntryAction, todayKey }) {
-  const [monthIdx, setMonthIdx] = useState(1);
+  const [monthIdx, setMonthIdx] = useState(MONTHS.length - 1);
   const [selected, setSelected] = useState(todayKey);
   useEffect(() => { setSelected(todayKey); }, [todayKey]);
   const day = journal[selected];
@@ -720,8 +733,14 @@ export default function App() {
   const [journal, setJournal] = useState(SEED_JOURNAL);
   const [day, setDay] = useState({ kcalLow: 510, kcalHigh: 680, protein: 37, proteinMeals: 1 });
   const [todayKey, setTodayKey] = useState(TODAY_KEY);
-  const [dayIndex, setDayIndex] = useState(12);
-  const [stageIdx, setStageIdx] = useState(0);
+  const [dayIndex, setDayIndex] = useState(() => {
+    const start = loadLS("becoming_start", null);
+    if (!start) return 12;
+    const ms = new Date(TODAY_KEY + "T12:00:00") - new Date(start + "T12:00:00");
+    return Math.max(1, Math.round(ms / 86400000) + 1);
+  });
+  // day index anchored to first-use date (seeded 11 days back for the demo story)
+  const startKeyRef = useRef(loadLS("becoming_start", null) || (() => { const k = shiftKey(TODAY_KEY, -11); saveLS("becoming_start", k); return k; })());
   const prompted = useRef({}); // one nudge per slot per day
   const [observations, setObservations] = useState([
     { date: "Jun 29", text: "Waist looked smaller in the mirror" },
@@ -883,29 +902,37 @@ export default function App() {
     }
   };
 
-  const advanceClock = () => {
-    const next = (stageIdx + 1) % SIM_STAGES.length;
-    const stage = SIM_STAGES[next];
-    setStageIdx(next);
-    if (stage.advanceDay) {
-      const nk = nextKey(todayKey);
-      prompted.current = {};
-      setTodayKey(nk);
-      setDayIndex((i) => i + 1);
-      setDay({ kcalLow: 0, kcalHigh: 0, protein: 0, proteinMeals: 0 });
-      setJournal((j) => ({ ...j, [nk]: j[nk] || { note: "In progress.", entries: [] } }));
-      pushCoach({
-        text: `Good morning \u2014 Day ${dayIndex + 1}.`,
-        card: { kind: "briefing",
-          focus: ["Glutes ready again", "Quiet evening \u2014 no dance"],
-          oneThing: "One thing: protein at breakfast.",
-          memoryNote: "Rest-ish days are when your protein dips \u2014 breakfast is the easy fix." },
-      }, 800);
-      setTimeout(() => slotNudge(stage.hour), 1800);
-    } else {
-      slotNudge(stage.hour);
-    }
+  const rolloverTo = (nk) => {
+    prompted.current = {};
+    setTodayKey(nk);
+    setDayIndex((i) => i + 1);
+    setDay({ kcalLow: 0, kcalHigh: 0, protein: 0, proteinMeals: 0 });
+    setJournal((j) => ({ ...j, [nk]: j[nk] || { note: "In progress.", entries: [] } }));
+    pushCoach({
+      text: `Good morning \u2014 Day ${dayIndex + 1}.`,
+      card: { kind: "briefing",
+        focus: ["Glutes ready again", "Tell me the plan when you have one"],
+        oneThing: "One thing: protein at breakfast.",
+        memoryNote: "Your protein tends to dip on quieter days \u2014 breakfast is the easy fix." },
+    }, 800);
   };
+
+  /* real-time awareness: checks on open, on returning to the app,
+     and once a minute. No buttons, no commands. */
+  useEffect(() => {
+    const tick = () => {
+      const nk = keyOf(effectiveDate());
+      if (nk > todayKey) { rolloverTo(nk); return; }
+      const nowH = new Date().getHours() + new Date().getMinutes() / 60;
+      slotNudge(nowH);
+    };
+    tick();
+    const id = setInterval(tick, 60000);
+    const onVis = () => { if (document.visibilityState === "visible") tick(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayKey, journal]);
 
   const startNewDay = () => {
     const nk = nextKey(todayKey);
@@ -1020,29 +1047,25 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#E9E3D6", fontFamily: FONT_BODY }}>
+    <div className="w-full flex items-center justify-center"  style={{ background: "#E9E3D6", fontFamily: FONT_BODY, minHeight: "100dvh" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..650&family=Instrument+Sans:wght@400;500;600&display=swap');
         * { -webkit-tap-highlight-color: transparent; }
+        .phone-frame { height: 100vh; height: 100dvh; border-radius: 0; }
+        @media (min-width: 441px) { .phone-frame { height: min(100dvh, 880px); border-radius: 36px; } }
+        .bottom-nav { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
         ::-webkit-scrollbar { display: none; }
         @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
         button:focus-visible, input:focus-visible { outline: 2px solid ${T.greenDeep}; outline-offset: 2px; border-radius: 8px; }
       `}</style>
 
-      <div className="w-full flex flex-col overflow-hidden" style={{ maxWidth: 420, height: "min(100vh, 880px)", background: T.bg, boxShadow: "0 30px 80px rgba(50,42,25,0.25)", borderRadius: typeof window !== "undefined" && window.innerWidth > 440 ? 36 : 0 }}>
+      <div className="phone-frame w-full flex flex-col overflow-hidden" style={{ maxWidth: 420, background: T.bg, boxShadow: "0 30px 80px rgba(50,42,25,0.25)" }}>
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div>
-            <div className="text-xl" style={{ fontFamily: FONT_HEAD, fontWeight: 600, color: T.greenDeep }}>Becoming</div>
+            <div className="text-2xl" style={{ fontFamily: FONT_HEAD, fontWeight: 600, color: T.greenDeep }}>Becoming</div>
             <div className="text-xs" style={{ color: T.inkFaint }}>Just talk. I remember everything.</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={advanceClock} aria-label="Advance demo clock"
-              className="rounded-full px-3 py-1.5 text-xs font-medium"
-              style={{ background: T.surfaceSoft, color: T.inkSoft, border: `1px solid ${T.line}` }}>
-              ⏱ {SIM_STAGES[stageIdx].label} · Day {dayIndex}
-            </button>
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold" style={{ background: T.greenTint, color: T.greenDeep }}>B</div>
-          </div>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold" style={{ background: T.greenTint, color: T.greenDeep }}>B</div>
         </div>
 
         <div className="flex-1 min-h-0">
@@ -1051,7 +1074,7 @@ export default function App() {
           {tab === "me" && <MeScreen observations={observations} />}
         </div>
 
-        <div className="flex px-2 pt-2 pb-4" style={{ background: T.surface, borderTop: `1px solid ${T.line}` }}>
+        <div className="bottom-nav flex px-2 pt-2" style={{ background: T.surface, borderTop: `1px solid ${T.line}` }}>
           <NavIcon id="coach" label="Coach" path="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z" />
           <NavIcon id="journal" label="Journal" path="M4 4h13a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4zM4 4v18M9 9h6M9 13h6" />
           <NavIcon id="me" label="Me" path="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
