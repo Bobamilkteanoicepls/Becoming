@@ -42,3 +42,18 @@ Android:Chrome 打开 → 菜单 → "安装应用"
 - [ ] 接 Claude API:替换 src/App.jsx 里的 classifyIntent + 各个 case 的固定回复
 - [ ] 语气 system prompt:像朋友发微信 — 简短、温暖、有 emoji 但不多
 - [ ] 认真做时:用 Expo (React Native) 重写界面层,拿到原生推送通知
+
+## 接入真 AI 大脑(Claude API)
+
+app 现在有两个大脑:线上是真的 Claude(/api/coach),没配 key 或本地 npm run dev 时自动退回到内置规则引擎。
+
+1. 去 console.anthropic.com 注册,创建一个 API Key(充 $5 够用很久,一条消息约 ¥0.02-0.05)
+2. Vercel → 你的项目 → Settings → Environment Variables → 添加:
+   Name: ANTHROPIC_API_KEY   Value: 你的key
+3. Deployments 页 → 最新一条 → ⋯ → Redeploy
+4. 打开线上网址,和教练随便聊 — 现在它什么都能接住了
+
+本地想连真大脑:npm i -g vercel,然后用 `vercel dev` 代替 `npm run dev`。
+
+### 导入 ChatGPT 记忆
+打开 api/coach.js,找到 PASTE ZONE,把你和 ChatGPT 的对话要点贴进去,push 即可。

@@ -58,6 +58,23 @@ const FOOD_DB = [
   { k: ["salad"], name: "side salad + dressing", lo: 120, hi: 220, p: 3 },
   { k: ["yogurt", "greek"], name: "greek yogurt (170 g)", lo: 100, hi: 150, p: 16 },
   { k: ["banana"], name: "banana", lo: 90, hi: 120, p: 1 },
+  { k: ["avocado"], name: "avocado (\u00bd)", lo: 120, hi: 160, p: 2 },
+  { k: ["oatmeal", "oats", "porridge"], name: "oatmeal (1 bowl)", lo: 150, hi: 250, p: 6 },
+  { k: ["ramen", "noodle"], name: "noodles (1 bowl)", lo: 400, hi: 600, p: 15 },
+  { k: ["sushi"], name: "sushi (8 pc)", lo: 300, hi: 450, p: 18 },
+  { k: ["burrito"], name: "burrito", lo: 550, hi: 800, p: 28 },
+  { k: ["pasta"], name: "pasta (1 plate)", lo: 450, hi: 650, p: 15 },
+  { k: ["pizza"], name: "pizza (2 slices)", lo: 450, hi: 650, p: 20 },
+  { k: ["matcha"], name: "matcha latte (12 oz)", lo: 140, hi: 220, p: 4 },
+  { k: ["tofu"], name: "tofu (1 cup)", lo: 150, hi: 200, p: 18 },
+  { k: ["beef", "steak"], name: "beef (5 oz)", lo: 300, hi: 400, p: 36 },
+  { k: ["shrimp"], name: "shrimp (5 oz)", lo: 130, hi: 180, p: 28 },
+  { k: ["dumpling"], name: "dumplings (8)", lo: 350, hi: 500, p: 16 },
+  { k: ["poke"], name: "poke bowl", lo: 500, hi: 700, p: 35 },
+  { k: ["acai"], name: "acai bowl", lo: 350, hi: 550, p: 6 },
+  { k: ["protein shake"], name: "protein shake", lo: 150, hi: 250, p: 25 },
+  { k: ["granola"], name: "granola (\u00bd cup)", lo: 200, hi: 280, p: 5 },
+  { k: ["fruit", "berries", "apple", "orange", "grapes"], name: "fruit", lo: 60, hi: 120, p: 1 },
   { k: ["cookie", "chocolate", "cake", "dessert", "ice cream", "boba"], name: "sweet treat", lo: 150, hi: 280, p: 2, treat: true },
 ];
 
@@ -65,16 +82,25 @@ const MUSCLES = [
   { k: ["glute", "leg day", "legs"], group: "Glutes & legs", emoji: "🍑" },
   { k: ["back", "pull"], group: "Back", emoji: "🏋️" },
   { k: ["chest", "shoulder", "push"], group: "Chest & shoulders", emoji: "🏋️" },
-  { k: ["hip hop", "dance"], group: "Hip hop", emoji: "💃" },
+  { k: ["hip hop", "hiphop"], group: "Hip hop", emoji: "💃" },
+  { k: ["jazz", "kpop", "k-pop", "ballet", "heels", "contemporary", "salsa", "choreo", "dance"], group: "Dance", emoji: "💃", styled: true },
   { k: ["swim"], group: "Swimming", emoji: "🏊" },
   { k: ["walk"], group: "Walk", emoji: "🚶" },
 ];
 const RECOVERY_NEEDS = { "Glutes & legs": 3, "Back": 2, "Chest & shoulders": 2 };
 
-/* rough burn ranges at ~54 kg body weight */
+/* rough burn ranges at ~54 kg body weight, per DEFAULT duration below.
+   burnFor() scales them to the actual minutes logged. */
+const BURN_BASE_MIN = { "Back": 45, "Chest & shoulders": 45, "Glutes & legs": 50, "Hip hop": 60, "Dance": 60, "Swimming": 30, "Walk": 30 };
+const burnFor = (group, min) => {
+  const b = BURN[group] || [100, 180];
+  const base = BURN_BASE_MIN[group] || 45;
+  const f = min / base;
+  return [Math.round(b[0] * f / 10) * 10, Math.round(b[1] * f / 10) * 10];
+};
 const BURN = {
   "Back": [150, 220], "Chest & shoulders": [150, 220], "Glutes & legs": [180, 260],
-  "Hip hop": [280, 400], "Swimming": [180, 270], "Walk": [90, 130],
+  "Hip hop": [280, 400], "Dance": [280, 400], "Swimming": [180, 270], "Walk": [90, 130],
 };
 
 const WORKOUT_CHIPS = [
@@ -239,12 +265,30 @@ function parseFood(text) {
   return { items: found.map((f) => f.name), breakdown: found, lo, hi, p, tags };
 }
 
+/* recompute a meal's totals + tags from an edited breakdown */
+function rebuildMeal(breakdown) {
+  const lo = breakdown.reduce((a, b) => a + b.lo, 0);
+  const hi = breakdown.reduce((a, b) => a + b.hi, 0);
+  const p = breakdown.reduce((a, b) => a + b.p, 0);
+  const tags = [];
+  if (p >= 25) tags.push("High protein"); else if (p < 10) tags.push("Light on protein");
+  if (!tags.length) tags.push("Balanced");
+  return { items: breakdown.map((b) => b.name), breakdown, lo, hi, p, tags };
+}
+
 function parseWorkout(text) {
   const l = text.toLowerCase();
   const hit = MUSCLES.find((m) => m.k.some((kw) => l.includes(kw)));
   if (!hit) return null;
-  const dur = l.match(/(\d+)\s*min/);
-  return { group: hit.group, emoji: hit.emoji, min: dur ? parseInt(dur[1]) : hit.group === "Hip hop" ? 60 : ["Swimming", "Walk"].includes(hit.group) ? 30 : 45 };
+  const dur = l.match(/(\d+)\s*(?:min|mins|minutes)/);
+  let label = hit.group;
+  if (hit.styled) {
+    const style = hit.k.find((kw) => l.includes(kw) && kw !== "dance");
+    label = style ? style[0].toUpperCase() + style.slice(1) + " dance" : "Dance";
+  }
+  const isDance = hit.group === "Hip hop" || hit.group === "Dance";
+  return { group: hit.group, label, emoji: hit.emoji,
+    min: dur ? parseInt(dur[1]) : isDance ? 60 : ["Swimming", "Walk"].includes(hit.group) ? 30 : 45 };
 }
 
 const BODY_PARTS = ["waist", "shoulders", "glutes", "legs", "arms", "abs", "hips", "thighs"];
@@ -254,7 +298,7 @@ function classifyIntent(text) {
   const l = text.toLowerCase();
   if (/new day|\bd\+\s*\d*\b|next day|start today/.test(l)) return "newday";
 
-  if (/^actually|it was|that was (lunch|dinner|breakfast|a snack)|^wrong|delete that|remove that/.test(l)) return "correct";
+  if (/actually|it was|it\u2019s \d|you forgot|forgot|you missed|also had|make it \d|^wrong|delete that|remove that|plus a /.test(l)) return "correct";
   const part = BODY_PARTS.find((b) => l.includes(b));
   if (part && /(look|feel|seem)/.test(l)) {
     return /(bigger|thicker|wider|bloat)/.test(l) ? "bodyWorry" : "bodyObserve";
@@ -420,7 +464,7 @@ function Bubble({ msg }) {
 
 /* ---------------- COACH screen: conversation is the app ---------------- */
 
-function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto, decisionChips }) {
+function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto, decisionChips, onKb, kbOpen }) {
   const [input, setInput] = useState("");
   const [starter, setStarter] = useState(null); // null | eat | train | ask
   const [sheet, setSheet] = useState(null);
@@ -459,8 +503,8 @@ function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto
         <div ref={endRef} />
       </div>
 
-      {/* quick starters — everything continues inside chat */}
-      <div className="px-4 pb-2 flex gap-2 overflow-x-auto items-center" style={{ scrollbarWidth: "none" }}>
+      {/* quick starters — hidden while the keyboard is up */}
+      <div className="px-4 pb-2 flex gap-2 overflow-x-auto items-center" style={{ scrollbarWidth: "none", display: kbOpen ? "none" : "flex" }}>
         {starter === null && STARTERS.map((s) => (
           <button key={s.id}
             onClick={() => (s.id === "photo" ? setSheet("preview") : setStarter(s.id))}
@@ -491,6 +535,8 @@ function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto
             </svg>
           </button>
           <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
+            onFocus={() => { onKb(true); setTimeout(() => endRef.current?.scrollIntoView({ block: "end" }), 250); }}
+            onBlur={() => setTimeout(() => onKb(false), 150)}
             placeholder="Just talk — I'll remember." className="flex-1 bg-transparent outline-none text-sm" style={{ color: T.ink }} aria-label="Message your coach" />
           <button onClick={() => send()} aria-label="Send" className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: T.greenDeep }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#FDFBF4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -741,7 +787,10 @@ export default function App() {
   });
   // day index anchored to first-use date (seeded 11 days back for the demo story)
   const startKeyRef = useRef(loadLS("becoming_start", null) || (() => { const k = shiftKey(TODAY_KEY, -11); saveLS("becoming_start", k); return k; })());
-  const prompted = useRef({}); // one nudge per slot per day
+  const prompted = useRef({});
+  const [kbOpen, setKbOpen] = useState(false);
+  const lastMeal = useRef(null);
+  const lastWorkout = useRef(null); // one nudge per slot per day
   const [observations, setObservations] = useState([
     { date: "Jun 29", text: "Waist looked smaller in the mirror" },
     { date: "Jun 27", text: "Glutes fuller — jeans fit different" },
@@ -774,7 +823,16 @@ export default function App() {
 
   const applyFood = (f, label = "Meal") => {
     setDay((d) => ({ ...d, kcalLow: d.kcalLow + f.lo, kcalHigh: d.kcalHigh + f.hi, protein: d.protein + f.p, proteinMeals: d.proteinMeals + (f.p >= 15 ? 1 : 0) }));
-    addJournal(J("meal", "🍽️", label, `${f.items.join(", ")} · ~${f.lo}–${f.hi} kcal · ${f.p} g protein`, "now", { lo: f.lo, hi: f.hi, p: f.p }));
+    const entry = J("meal", "🍽️", label, `${f.items.join(", ")} · ~${f.lo}–${f.hi} kcal · ${f.p} g protein`, "now", { lo: f.lo, hi: f.hi, p: f.p });
+    lastMeal.current = { id: entry.id, label, food: { ...f, breakdown: [...(f.breakdown || [])] } };
+    addJournal(entry);
+  };
+
+  const updateJournalEntry = (id, patch) => {
+    setJournal((j) => ({
+      ...j,
+      [todayKey]: { ...j[todayKey], entries: (j[todayKey]?.entries || []).map((e) => (e.id === id ? { ...e, ...patch } : e)) },
+    }));
   };
 
   const mealReplyText = (f) => {
@@ -785,10 +843,13 @@ export default function App() {
     return `Logged. ~${totalP} g so far — the 5pm protein snack is still the move.`;
   };
 
-  const logWorkout = (group, min) => {
+  const logWorkout = (group, min, label) => {
+    const shown = label || group;
     const emoji = MUSCLES.find((m) => m.group === group)?.emoji || "🏋️";
-    const b = BURN[group] || [100, 180];
-    addJournal(J("workout", emoji, group, `~${min} min · ~${b[0]}–${b[1]} kcal`, "now"));
+    const b = burnFor(group, min);
+    const entry = J("workout", emoji, shown, `~${min} min · ~${b[0]}–${b[1]} kcal`, "now");
+    lastWorkout.current = { id: entry.id, group, label: shown, min };
+    addJournal(entry);
     const notes = {
       "Back": { recoveryNote: "Ready again Saturday", context: "2nd back session this week — right on rhythm." },
       "Chest & shoulders": { recoveryNote: "Ready again Saturday", context: "Heads up: sweet cravings usually hit ~9pm after chest day. Plan a snack, don't fight it." },
@@ -798,7 +859,7 @@ export default function App() {
       "Walk": { recoveryNote: "No recovery cost", context: "Counts more than people think." },
     };
     const n = notes[group] || { recoveryNote: "Logged" };
-    pushCoach({ text: group === "Chest & shoulders" ? "Logged — one prediction:" : "Logged.", card: { kind: "workout", w: { group, min, emoji, burn: b, ...n } } });
+    pushCoach({ text: group === "Chest & shoulders" ? "Logged — one prediction:" : "Logged.", card: { kind: "workout", w: { group: shown, min, emoji, burn: b, ...n } } });
     maybeProactive();
   };
 
@@ -837,26 +898,98 @@ export default function App() {
   };
 
   /* chat-native editing: "actually it was 3 eggs" */
+  /* corrections in plain language: "you forgot avocado", "actually 3 eggs",
+     "it was 30 mins", "it was jazz not hip hop", "delete that" */
   const handleCorrection = (text) => {
     const l = text.toLowerCase();
+
     if (/delete|remove/.test(l)) {
-      setJournal((j) => {
-        const entries = [...(j[todayKey]?.entries || [])];
-        entries.pop();
-        return { ...j, [todayKey]: { ...j[todayKey], entries } };
-      });
+      const victim = lastMeal.current || lastWorkout.current;
+      if (victim) {
+        setJournal((j) => ({ ...j, [todayKey]: { ...j[todayKey], entries: (j[todayKey]?.entries || []).filter((e) => e.id !== victim.id) } }));
+        if (lastMeal.current && victim.id === lastMeal.current.id) {
+          const f = lastMeal.current.food;
+          setDay((d) => ({ ...d, kcalLow: d.kcalLow - f.lo, kcalHigh: d.kcalHigh - f.hi, protein: d.protein - f.p }));
+          lastMeal.current = null;
+        } else lastWorkout.current = null;
+      }
       pushCoach({ text: "Done, deleted \u2014 like it never happened \ud83d\ude09" });
       return;
     }
-    const eggs = l.match(/(\d+)\s*eggs/);
-    if (eggs) {
-      setDay((d) => ({ ...d, kcalLow: d.kcalLow + 75, kcalHigh: d.kcalHigh + 85, protein: d.protein + 6 }));
-      pushCoach({ text: `Fixed — ${eggs[1]} eggs. Adjusted: +~80 kcal, +6 g protein. Journal updated.` });
+
+    // --- workout corrections first: duration or style ---
+    const mins = l.match(/(\d+)\s*(?:min|mins|minutes)/);
+    const wk = parseWorkout(text);
+    if (lastWorkout.current && (mins || wk)) {
+      const cur = lastWorkout.current;
+      const newMin = mins ? parseInt(mins[1]) : cur.min;
+      const newLabel = wk && wk.label !== cur.label && !mins ? wk.label : (wk && wk.label !== "Dance" && wk.label !== cur.label ? wk.label : cur.label);
+      const group = wk ? wk.group : cur.group;
+      const b = burnFor(group, newMin);
+      lastWorkout.current = { ...cur, min: newMin, label: newLabel, group };
+      updateJournalEntry(cur.id, { label: newLabel, detail: `~${newMin} min \u00b7 ~${b[0]}\u2013${b[1]} kcal` });
+      pushCoach({ text: `Fixed \u2014 ${newLabel.toLowerCase()}, ${newMin} min \u00b7 ~${b[0]}\u2013${b[1]} kcal. Journal updated.` });
       return;
     }
-    const slot = l.match(/(lunch|dinner|breakfast|snack)/);
-    if (slot) { pushCoach({ text: `Got it — moved to ${slot[1]}. Journal updated.` }); return; }
-    pushCoach({ text: "Fixed. Journal updated — you never have to be precise the first time." });
+
+    // --- meal corrections: add missed items, adjust quantities, or replace ---
+    if (lastMeal.current) {
+      const cur = lastMeal.current;
+      const eggs = l.match(/(\d+)\s*eggs/);
+      const parsed = parseFood(text);
+      const isAdd = /forgot|missed|also|add |plus |and a /.test(l);
+      const isReplace = /actually|it was|make it/.test(l) && !isAdd;
+
+      const applyPatch = (food, verb) => {
+        updateJournalEntry(cur.id, { detail: `${food.items.join(", ")} \u00b7 ~${food.lo}\u2013${food.hi} kcal \u00b7 ${food.p} g protein`, lo: food.lo, hi: food.hi, p: food.p });
+        lastMeal.current = { ...cur, food };
+        pushCoach({ text: verb, card: { kind: "meal", food } });
+      };
+
+      if (eggs && cur.food.breakdown.some((b) => /egg/.test(b.name))) {
+        const n = parseInt(eggs[1]);
+        const old = cur.food.breakdown.find((b) => /egg/.test(b.name));
+        const neu = { name: `${n} eggs`, lo: n * 70, hi: n * 80, p: n * 6 };
+        const food = rebuildMeal(cur.food.breakdown.map((b) => (/egg/.test(b.name) ? neu : b)));
+        setDay((d) => ({ ...d, kcalLow: d.kcalLow - old.lo + neu.lo, kcalHigh: d.kcalHigh - old.hi + neu.hi, protein: d.protein - old.p + neu.p }));
+        applyPatch(food, `Fixed \u2014 ${n} eggs. Updated:`);
+        return;
+      }
+
+      if (parsed && isAdd) {
+        const food = rebuildMeal([...cur.food.breakdown, ...parsed.breakdown]);
+        setDay((d) => ({ ...d, kcalLow: d.kcalLow + parsed.lo, kcalHigh: d.kcalHigh + parsed.hi, protein: d.protein + parsed.p }));
+        applyPatch(food, `My bad \u2014 added. Updated:`);
+        return;
+      }
+
+      if (parsed && isReplace) {
+        const oldF = cur.food;
+        setDay((d) => ({ ...d, kcalLow: d.kcalLow - oldF.lo + parsed.lo, kcalHigh: d.kcalHigh - oldF.hi + parsed.hi, protein: d.protein - oldF.p + parsed.p }));
+        applyPatch(parsed, "Got it \u2014 replaced. Updated:");
+        return;
+      }
+
+      if (isAdd && !parsed) {
+        // unknown food: log it honestly with a rough placeholder instead of ignoring it
+        const name = text.replace(/you forgot|forgot|you missed|missed|also had|also|add|plus|the|a |an /gi, "").trim() || "that";
+        const rough = { name: `${name} (rough est.)`, lo: 80, hi: 200, p: 3 };
+        const food = rebuildMeal([...cur.food.breakdown, rough]);
+        setDay((d) => ({ ...d, kcalLow: d.kcalLow + rough.lo, kcalHigh: d.kcalHigh + rough.hi, protein: d.protein + rough.p }));
+        applyPatch(food, `Added \u201c${name}\u201d \u2014 I don't know it well yet, so I used a rough ~80\u2013200 kcal. Correct me anytime.`);
+        return;
+      }
+
+      const slot = l.match(/(lunch|dinner|breakfast|snack)/);
+      if (slot) {
+        const nice = slot[1][0].toUpperCase() + slot[1].slice(1);
+        updateJournalEntry(cur.id, { label: nice });
+        pushCoach({ text: `Got it \u2014 moved to ${slot[1]}. Journal updated.` });
+        return;
+      }
+    }
+
+    pushCoach({ text: "Tell me what to fix \u2014 \u201cyou forgot avocado\u201d, \u201cactually 3 eggs\u201d, \u201cit was 30 mins\u201d all work." });
   };
 
   const decisionChips = ["Should I train today?", "Should I eat before dance?", "Am I actually hungry?", "What should I order tonight?", "Can I drink this latte?"];
@@ -932,7 +1065,7 @@ export default function App() {
     document.addEventListener("visibilitychange", onVis);
     return () => { clearInterval(id); document.removeEventListener("visibilitychange", onVis); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayKey, journal]);
+  }, [todayKey, journal, day]);
 
   const startNewDay = () => {
     const nk = nextKey(todayKey);
@@ -952,8 +1085,102 @@ export default function App() {
     }, 900);
   };
 
-  const handleSend = (text) => {
+  const tryLLM = async (text) => {
+    try {
+      const history = messages
+        .slice(-10)
+        .map((m) => ({ role: m.role === "coach" ? "assistant" : "user", content: m.text || (m.card ? "[shared a card]" : "") }))
+        .filter((m) => m.content);
+      history.push({ role: "user", content: text });
+      const entries = journal[todayKey]?.entries || [];
+      const context = {
+        day: dayIndex,
+        time: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        kcalLow: day.kcalLow, kcalHigh: day.kcalHigh, protein: day.protein,
+        meals: entries.filter((e) => e.type === "meal").map((e) => `${e.label}: ${e.detail}`),
+        workouts: entries.filter((e) => e.type === "workout").map((e) => `${e.label} (${e.detail})`),
+      };
+      const r = await fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history, context }),
+      });
+      if (!r.ok) return false;
+      const data = await r.json();
+      const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+      const out = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      if (!out.reply) return false;
+      setTyping(false);
+      applyLLM(out);
+      return true;
+    } catch (e) {
+      console.warn("Coach brain offline — using local rules.", e);
+      return false;
+    }
+  };
+
+  const applyLLM = (out) => {
+    const a = out.action;
+    const danceish = (t) => /dance|hip hop|jazz|ballet|kpop|heels|salsa|contemporary/i.test(t || "");
+    if (a?.type === "log_meal" && a.items?.length) {
+      const food = rebuildMeal(a.items);
+      if (a.tags?.length) food.tags = a.tags;
+      applyFood(food, a.label || "Meal");
+      pushCoach({ text: out.reply, card: { kind: "meal", food } }, 250);
+      return;
+    }
+    if (a?.type === "update_last_meal" && a.items?.length && lastMeal.current) {
+      const cur = lastMeal.current, oldF = cur.food;
+      const food = rebuildMeal(a.items);
+      if (a.tags?.length) food.tags = a.tags;
+      setDay((d) => ({ ...d, kcalLow: d.kcalLow - oldF.lo + food.lo, kcalHigh: d.kcalHigh - oldF.hi + food.hi, protein: d.protein - oldF.p + food.p }));
+      updateJournalEntry(cur.id, { detail: `${food.items.join(", ")} \u00b7 ~${food.lo}\u2013${food.hi} kcal \u00b7 ${food.p} g protein`, lo: food.lo, hi: food.hi, p: food.p });
+      lastMeal.current = { ...cur, food };
+      pushCoach({ text: out.reply, card: { kind: "meal", food } }, 250);
+      return;
+    }
+    if (a?.type === "log_workout") {
+      const min = a.min || 45;
+      const b = a.burnLo ? [a.burnLo, a.burnHi || a.burnLo + 60] : burnFor(a.group || "Back", min);
+      const emoji = danceish(a.label) ? "\ud83d\udc83" : /swim/i.test(a.label || "") ? "\ud83c\udfca" : /walk/i.test(a.label || "") ? "\ud83d\udeb6" : /glute|leg/i.test(a.label || "") ? "\ud83c\udf51" : "\ud83c\udfcb\ufe0f";
+      const entry = J("workout", emoji, a.label || "Workout", `~${min} min \u00b7 ~${b[0]}\u2013${b[1]} kcal`, "now");
+      lastWorkout.current = { id: entry.id, group: a.group || a.label || "Workout", label: a.label || "Workout", min };
+      addJournal(entry);
+      pushCoach({ text: out.reply, card: { kind: "workout", w: { group: a.label || "Workout", min, emoji, burn: b, recoveryNote: a.recovery || "Logged", context: a.note || null } } }, 250);
+      return;
+    }
+    if (a?.type === "update_last_workout" && lastWorkout.current) {
+      const cur = lastWorkout.current;
+      const min = a.min || cur.min, label = a.label || cur.label;
+      const b = a.burnLo ? [a.burnLo, a.burnHi || a.burnLo + 60] : burnFor(cur.group, min);
+      updateJournalEntry(cur.id, { label, detail: `~${min} min \u00b7 ~${b[0]}\u2013${b[1]} kcal` });
+      lastWorkout.current = { ...cur, min, label };
+      pushCoach({ text: out.reply }, 250);
+      return;
+    }
+    if (a?.type === "body_observation" && a.text) {
+      setObservations((o) => [{ date: "Today", text: a.text }, ...o]);
+      addJournal(J("obs", "\ud83e\ude9e", `\u201c${a.text}\u201d`, "Saved to progress", "now"));
+      pushCoach({ text: out.reply }, 250);
+      return;
+    }
+    if (a?.type === "delete_last") {
+      handleCorrection("delete that");
+      return;
+    }
+    pushCoach({ text: out.reply }, 250);
+  };
+
+  const handleSend = async (text) => {
     setMessages((m) => [...m, { id: nid(), role: "user", text }]);
+    maybeProactive();
+    setTyping(true);
+    const ok = await tryLLM(text);
+    if (!ok) { setTyping(false); localBrain(text); }
+  };
+
+  /* offline fallback brain (rules). The real brain is /api/coach (Claude). */
+  const localBrain = (text) => {
     const intent = classifyIntent(text);
     const say = (t, cardObj) => pushCoach(cardObj ? { text: t, card: cardObj } : { text: t });
 
@@ -964,10 +1191,10 @@ export default function App() {
       case "correct": handleCorrection(text); return;
       case "logFood": {
         const f = parseFood(text); applyFood(f);
-        say(mealReplyText(f), { kind: "meal", food: f }); maybeProactive(); return;
+        say(mealReplyText(f), { kind: "meal", food: f }); return;
       }
       case "logWorkout": {
-        const w = parseWorkout(text); logWorkout(w.group, w.min); return;
+        const w = parseWorkout(text); logWorkout(w.group, w.min, w.label); return;
       }
       case "bodyWorry":
         say("You don't have to hold this in your head — I do:", {
@@ -982,7 +1209,7 @@ export default function App() {
         say(prior
           ? `Noted — and it connects: "${prior.text}" (${prior.date}).\nTwo sightings in ten days. That's signal, not noise.`
           : "Noted — added to your body timeline. I'll connect it to what you notice next.");
-        maybeProactive(); return;
+        return;
       }
       case "vent":
         say("Fair. Which kind of tired?\nSore → recovery talking, rest wins.\nSleepy → also rest.\nJust meh → 20 min of back, leave whenever.");
@@ -1016,7 +1243,14 @@ export default function App() {
       case "order": say("Order what sounds good, anchored with a protein — your winning move all month.\nArrive not-starving. Skip the table math."); return;
       case "treatok": say(`Yes. ~120–180 kcal at ${day.protein} g protein on a training day. It fits.`); return;
       case "ask": say("Good question — one more detail and I'll make the call with you."); return;
-      default: say("I'm listening. A thought, a worry, a win, a plan — it all counts. I'll do the organizing.");
+      default: {
+        const variants = [
+          "I'm listening. A thought, a worry, a win, a plan — it all counts.",
+          "Tell me more — I'll do the organizing.",
+          "Go on — I'm taking notes so you don't have to.",
+        ];
+        say(variants[Math.floor(Math.random() * variants.length)]);
+      }
     }
   };
 
@@ -1069,12 +1303,12 @@ export default function App() {
         </div>
 
         <div className="flex-1 min-h-0">
-          {tab === "coach" && <CoachScreen messages={messages} typing={typing} onSend={handleSend} onUsual={handleUsual} onWorkoutChip={handleWorkoutChip} onPhoto={handlePhoto} decisionChips={decisionChips} />}
+          {tab === "coach" && <CoachScreen messages={messages} typing={typing} onSend={handleSend} onUsual={handleUsual} onWorkoutChip={handleWorkoutChip} onPhoto={handlePhoto} decisionChips={decisionChips} onKb={setKbOpen} kbOpen={kbOpen} />}
           {tab === "journal" && <JournalScreen journal={journal} onEntryAction={handleEntryAction} todayKey={todayKey} />}
           {tab === "me" && <MeScreen observations={observations} />}
         </div>
 
-        <div className="bottom-nav flex px-2 pt-2" style={{ background: T.surface, borderTop: `1px solid ${T.line}` }}>
+        <div className="bottom-nav flex px-2 pt-2" style={{ background: T.surface, borderTop: `1px solid ${T.line}`, display: kbOpen ? "none" : "flex" }}>
           <NavIcon id="coach" label="Coach" path="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z" />
           <NavIcon id="journal" label="Journal" path="M4 4h13a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4zM4 4v18M9 9h6M9 13h6" />
           <NavIcon id="me" label="Me" path="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
