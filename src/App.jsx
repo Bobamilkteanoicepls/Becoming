@@ -1134,9 +1134,8 @@ export default function App() {
       });
       if (!r.ok) return false;
       const data = await r.json();
-      let raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+      const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
       if (!raw) return false;
-      if (!raw.startsWith("{") && !raw.startsWith("```")) raw = "{" + raw; // assistant turn was prefilled with "{"
 
       // robust JSON extraction: strip fences, else grab the first {...} block
       let out = null;

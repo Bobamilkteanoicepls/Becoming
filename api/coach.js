@@ -51,6 +51,13 @@ export default async function handler(req, res) {
   try {
     const { messages, context } = req.body || {};
     const ctx = context || {};
+
+    // sanitize history: non-empty content, must start with a user turn
+    let msgs = (messages || [])
+      .filter((m) => m && typeof m.content === "string" && m.content.trim())
+      .map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content.trim() }));
+    while (msgs.length && msgs[0].role !== "user") msgs.shift();
+    if (!msgs.length) msgs = [{ role: "user", content: "Hi" }];
     const system = `${RULES}\n${USER_MEMORY}\nTODAY (Day ${ctx.day ?? "?"}, local time ${ctx.time ?? "?"}):\n- Fuel so far: ~${ctx.kcalLow ?? 0}–${ctx.kcalHigh ?? 0} kcal, ~${ctx.protein ?? 0} g protein\n- Meals: ${(ctx.meals || []).join(" | ") || "none yet"}\n- Workouts: ${(ctx.workouts || []).join(" | ") || "none yet"}`;
 
     const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -64,7 +71,7 @@ export default async function handler(req, res) {
         model: "claude-sonnet-4-6",
         max_tokens: 700,
         system,
-        messages: [...(messages || []).slice(-12), { role: "assistant", content: "{" }],
+        messages: msgs.slice(-12),
       }),
     });
 
