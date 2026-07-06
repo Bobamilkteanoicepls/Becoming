@@ -527,7 +527,7 @@ function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto
         ))}
       </div>
 
-      <div className="px-4 pb-4 pt-1">
+      <div className="px-4 pt-1" style={{ paddingBottom: kbOpen ? 10 : "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}>
         <div className="flex items-center gap-2 rounded-full pl-2 pr-2 py-2" style={{ background: T.surface, border: `1px solid ${T.line}`, boxShadow: cardShadow }}>
           <button onClick={() => setSheet("preview")} aria-label="Share a photo" className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: T.greenTint }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.greenDeep} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -535,9 +535,8 @@ function CoachScreen({ messages, typing, onSend, onUsual, onWorkoutChip, onPhoto
             </svg>
           </button>
           <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
-            onFocus={() => { onKb(true); setTimeout(() => endRef.current?.scrollIntoView({ block: "end" }), 250); }}
-            onBlur={() => setTimeout(() => onKb(false), 150)}
-            placeholder="Just talk — I'll remember." className="flex-1 bg-transparent outline-none text-sm" style={{ color: T.ink }} aria-label="Message your coach" />
+            onFocus={() => setTimeout(() => endRef.current?.scrollIntoView({ block: "end" }), 300)}
+            placeholder="Just talk — I'll remember." className="flex-1 bg-transparent outline-none" style={{ color: T.ink, fontSize: 16 }} aria-label="Message your coach" />
           <button onClick={() => send()} aria-label="Send" className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: T.greenDeep }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#FDFBF4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
@@ -789,6 +788,34 @@ export default function App() {
   const startKeyRef = useRef(loadLS("becoming_start", null) || (() => { const k = shiftKey(TODAY_KEY, -11); saveLS("becoming_start", k); return k; })());
   const prompted = useRef({});
   const [kbOpen, setKbOpen] = useState(false);
+  // keep the app frame sized to the visible viewport (above the keyboard on iOS)
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const sync = () => {
+      document.documentElement.style.setProperty("--app-h", vv.height + "px");
+      setKbOpen(window.innerHeight - vv.height > 120); // keyboard covers >120px => open
+    };
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => { vv.removeEventListener("resize", sync); vv.removeEventListener("scroll", sync); };
+  }, []);
+
+  /* iOS keyboard fix: keep the app exactly as tall as the visible area,
+     so the composer always sits right above the keyboard */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const fit = () => {
+      document.documentElement.style.setProperty("--app-h", vv.height + "px");
+      window.scrollTo(0, 0);
+    };
+    fit();
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    return () => { vv.removeEventListener("resize", fit); vv.removeEventListener("scroll", fit); };
+  }, []);
   const lastMeal = useRef(null);
   const lastWorkout = useRef(null); // one nudge per slot per day
   const [observations, setObservations] = useState([
@@ -1281,12 +1308,12 @@ export default function App() {
   );
 
   return (
-    <div className="w-full flex items-center justify-center"  style={{ background: "#E9E3D6", fontFamily: FONT_BODY, minHeight: "100dvh" }}>
+    <div className="w-full flex items-center justify-center" style={{ background: "#E9E3D6", fontFamily: FONT_BODY, minHeight: "var(--app-h, 100dvh)" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..650&family=Instrument+Sans:wght@400;500;600&display=swap');
         * { -webkit-tap-highlight-color: transparent; }
-        .phone-frame { height: 100vh; height: 100dvh; border-radius: 0; }
-        @media (min-width: 441px) { .phone-frame { height: min(100dvh, 880px); border-radius: 36px; } }
+        .phone-frame { height: 100dvh; height: var(--app-h, 100dvh); border-radius: 0; }
+        @media (min-width: 441px) { .phone-frame { height: min(var(--app-h, 100dvh), 880px); border-radius: 36px; } }
         .bottom-nav { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
         ::-webkit-scrollbar { display: none; }
         @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

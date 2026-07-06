@@ -4,3 +4,5 @@
 
 html, body, #root { height: 100%; }
 body { margin: 0; }
+
+html, body { overflow: hidden; overscroll-behavior: none; }
