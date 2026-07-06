@@ -1134,11 +1134,24 @@ export default function App() {
       });
       if (!r.ok) return false;
       const data = await r.json();
-      const raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
-      const out = JSON.parse(raw.replace(/```json|```/g, "").trim());
-      if (!out.reply) return false;
+      let raw = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+      if (!raw) return false;
+      if (!raw.startsWith("{") && !raw.startsWith("```")) raw = "{" + raw; // assistant turn was prefilled with "{"
+
+      // robust JSON extraction: strip fences, else grab the first {...} block
+      let out = null;
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+      try {
+        out = JSON.parse(cleaned);
+      } catch {
+        const m = cleaned.match(/\{[\s\S]*\}/);
+        if (m) { try { out = JSON.parse(m[0]); } catch {} }
+      }
+
       setTyping(false);
-      applyLLM(out);
+      if (out && out.reply) { applyLLM(out); return true; }
+      // Claude replied but not as JSON — still use its words, never the canned template
+      pushCoach({ text: cleaned.replace(/^\{[\s\S]*$/, "").trim() || cleaned }, 250);
       return true;
     } catch (e) {
       console.warn("Coach brain offline — using local rules.", e);

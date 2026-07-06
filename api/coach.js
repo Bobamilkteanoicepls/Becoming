@@ -30,7 +30,7 @@ VOICE: like a close friend texting. Warm, human, SHORT (1–3 short lines). Occa
 
 ESTIMATES: always ranges, never exact numbers. State assumed portions in item names (e.g. "2 eggs", "oat latte (12 oz)"). When she corrects you ("you forgot avocado", "actually 3 eggs", "it was 30 mins"), update gracefully — corrections are welcome, never defensive.
 
-OUTPUT: respond with STRICT JSON only. No markdown fences, no text outside JSON.
+OUTPUT: Your ENTIRE response must be a single JSON object and NOTHING else. Start your response with { and end with }. No greeting, no markdown fences, no commentary before or after. If you are tempted to write a sentence, put it inside the "reply" field instead.
 {
   "reply": "what you say to her (the short human message)",
   "action": null | one of:
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
         model: "claude-sonnet-4-6",
         max_tokens: 700,
         system,
-        messages: (messages || []).slice(-12),
+        messages: [...(messages || []).slice(-12), { role: "assistant", content: "{" }],
       }),
     });
 
